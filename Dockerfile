@@ -363,10 +363,13 @@ RUN install -d -m 0755 -o node -g node /home/node/.config && \
 
 ENV NODE_ENV=production
 
-# Security hardening: Run as non-root user
-# The node:24-bookworm image includes a 'node' user (uid 1000)
-# This reduces the attack surface by preventing container escape via root privileges
-USER node
+# Railway: the volume mounted at /data may hold root-owned state from older
+# root-based images, and Railway start-command overrides still run as the
+# image USER. Boot as root so the entrypoint can re-own /data, then drop to
+# the node user before exec'ing the gateway.
+COPY scripts/docker-railway-entrypoint.sh /usr/local/bin/docker-railway-entrypoint.sh
+RUN chmod 0755 /usr/local/bin/docker-railway-entrypoint.sh
+USER root
 
 # Start gateway server with default config.
 # Binds to loopback (127.0.0.1) by default for security.
@@ -383,4 +386,4 @@ USER node
 HEALTHCHECK --interval=3m --timeout=10s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 ENTRYPOINT ["tini", "-s", "--"]
-CMD ["node", "openclaw.mjs", "gateway"]
+CMD ["/usr/local/bin/docker-railway-entrypoint.sh"]
